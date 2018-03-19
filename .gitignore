@@ -1,0 +1,9 @@
+data/*
+bin/*
+out/*
+front/*
+bin/*
+obj
+bin
+.vs
+.vscode
