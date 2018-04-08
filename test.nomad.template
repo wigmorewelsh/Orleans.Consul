@@ -16,7 +16,7 @@ job "example" {
   }
 
   group "cache" {
-    count = 3
+    count = 1
 
     restart {
       attempts = 10
@@ -37,7 +37,7 @@ job "example" {
       # are specific to each driver, so please see specific driver
       # documentation for more information.
       config {
-        command  = "aln.exe"
+        command  = "silo.exe"
         args = [
           "--GatewayPort", "${NOMAD_PORT_gateway}",
           "--SiloPort", "${NOMAD_PORT_silo}"
@@ -68,8 +68,14 @@ job "example" {
       }
 
       service {
-        name = "global-redis-check"
+        name = "orleans-liveness"
         tags = ["global", "cache"]
+        port = "gateway"
+      }
+
+      service {
+        name = "orleans-gateway"
+        port = "silo"
       }
     }
   }

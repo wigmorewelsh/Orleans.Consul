@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="consul" Version="0.7.2.4" />
+    <PackageReference Include="Microsoft.Orleans.Core.Abstractions" Version="2.0.0-rc2" />
+    <PackageReference Include="Microsoft.Orleans.OrleansRuntime" Version="2.0.0-rc2" />
+    <PackageReference Include="Microsoft.Orleans.Runtime.Abstractions" Version="2.0.0-rc2" />
+  </ItemGroup>
+
+</Project>

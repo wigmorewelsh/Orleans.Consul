@@ -8,15 +8,17 @@ using Orleans.Logging;
 using Microsoft.Extensions.Logging;
 using System.Threading;
 using Microsoft.Extensions.Configuration;
-using Orleans.Runtime.Membership;
 using Microsoft.Extensions.DependencyInjection;
 using Interfaces;
+using Orleans.Consul;
 
 namespace aln
 {
     public class Config {
         public int SiloPort {get;set;} = 11111;
         public int GatewayPort {get;set;} = 30000;
+        public string ClusterAddress { get; set; } = "orleans-gateway";
+        public string LivenessAddress { get; set; } = "orleans-liveness";
     }
 
   public class Namer : Grain, IName
@@ -27,7 +29,7 @@ namespace aln
     }
   }
 
-  class Program
+  public class Program
     {
         private static ISiloHost silo;
         private static readonly ManualResetEvent siloStopped = new ManualResetEvent(false);
@@ -47,10 +49,9 @@ namespace aln
                 .Configure<ClusterMembershipOptions>(options => {
                     options.ValidateInitialConnectivity = false;
                 })
-                .UseConsulServiceClustering(clusterAddress: "orleans.gateway.local", livenessAddress: "orleans.liveness.local", consulAddress: "http://127.0.0.1:8500")
-                .UseConsulClustering(c => c.Address = new Uri("http://127.0.0.1:8500"))
-                .Configure<EndpointOptions>(options => options.AdvertisedIPAddress = IPAddress.Parse("127.0.0.1"))
-                .ConfigureEndpoints(IPAddress.Parse("127.0.0.1"), siloPort: config.SiloPort, gatewayPort: config.GatewayPort)
+                .UseConsulServiceClustering(clusterAddress: config.ClusterAddress, livenessAddress: config.LivenessAddress, consulAddress: "http://127.0.0.1:8500")
+                .Configure<EndpointOptions>(options => options.AdvertisedIPAddress = IPAddress.Parse("0.0.0.0"))
+                .ConfigureEndpoints(IPAddress.Parse("0.0.0.0"), siloPort: config.SiloPort, gatewayPort: config.GatewayPort)
                 .ConfigureApplicationParts(parts => parts.AddApplicationPart(typeof(Program).Assembly).WithReferences())
                 .ConfigureLogging(logging => logging.SetMinimumLevel(LogLevel.Debug).AddConsole())
                 .Build();

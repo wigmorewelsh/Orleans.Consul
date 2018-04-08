@@ -12,6 +12,7 @@ using Microsoft.Extensions.Options;
 using Orleans;
 using Orleans.Configuration;
 using Orleans.Hosting;
+using Orleans.Consul;
 
 namespace front
 {
@@ -42,11 +43,12 @@ namespace front
             app.UseMvc();
         }
 
+        public string ClusterAddress { get; set; } = "orleans-liveness";
+
         private IClusterClient CreateClusterClient(IServiceProvider serviceProvider)
         {
             var client = new ClientBuilder()
-                .UseConsulServiceClustering(clusterAddress: "orleans.local", consulAddress: "http://127.0.0.1:8500")
-                .UseConsulClustering(c => c.Address = new Uri("http://127.0.0.1:8500"))
+                .UseConsulServiceClustering(clusterAddress: ClusterAddress, consulAddress: "http://127.0.0.1:8500")
                 .ConfigureApplicationParts(parts => parts.AddApplicationPart(typeof(IName).Assembly))
                 .Configure<ClusterOptions>(options => options.ClusterId = "docker")
                 .Build();

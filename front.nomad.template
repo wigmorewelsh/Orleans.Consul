@@ -16,7 +16,7 @@ job "frontend" {
   }
 
   group "cache" {
-    count = 3
+    count = 1
 
     restart {
       attempts = 10
