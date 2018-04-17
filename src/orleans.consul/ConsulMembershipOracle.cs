@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Consul;
 using Microsoft.Extensions.Options;
@@ -10,24 +11,26 @@ using Orleans.Runtime;
 
 namespace src
 {
-  public class ConsulMembershipOptions
-  {
-    public string ClusterAddress { get; internal set; }
-    public string ConsulAddress { get; internal set; }
-    public string LivenessAddress { get; internal set; }
-  }
+    public class ConsulMembershipOptions
+    {
+        public string ClusterAddress { get; internal set; }
+        public string ConsulAddress { get; internal set; }
+        public string LivenessAddress { get; internal set; }
+    }
 
-  public class ConsulMembershipOracle : IMembershipOracle, IDisposable
+    public class ConsulMembershipOracle : IMembershipOracle, IDisposable
     {
         private readonly ILocalSiloDetails _siloDetails;
-    private readonly IOptions<ConsulMembershipOptions> _options;
-    private Task _task;
+        private readonly IOptions<ConsulMembershipOptions> _options;
+        private Task _task;
         private ConsulClient _client;
         private ulong _waitIndex = 0;
         private string _serviceName;
         private readonly HashSet<ISiloStatusListener> _subscribers = new HashSet<ISiloStatusListener>();
         private Dictionary<SiloAddress, SiloStatus> _silos = new Dictionary<SiloAddress, SiloStatus>();
         private bool _running;
+
+        private CancellationToken _cancelToken = new CancellationToken();
 
 
         public ConsulMembershipOracle(ILocalSiloDetails siloDetails, IOptions<ConsulMembershipOptions> options)
@@ -50,11 +53,12 @@ namespace src
             while (true)
             {
                 if (!_running) return;
-                var service  = await _client.Catalog.Service(_serviceName, "", new QueryOptions {WaitIndex = _waitIndex});
+                var service = await _client.Catalog.Service(_serviceName, "", new QueryOptions { WaitIndex = _waitIndex }, _cancelToken);
                 _waitIndex = service.LastIndex;
-                
+
                 var silos = new List<SiloAddress>();
-                foreach (var inst in service.Response){
+                foreach (var inst in service.Response)
+                {
                     var ip = IPAddress.Parse(inst.ServiceAddress);
                     var ep = new IPEndPoint(ip, inst.ServicePort);
                     silos.Add(SiloAddress.New(ep, 0));
@@ -62,8 +66,10 @@ namespace src
 
                 _silos = silos.ToDictionary(el => el, _ => SiloStatus.Active);
 
-                foreach(var subscriber in _subscribers){
-                    foreach(var silo in silos){
+                foreach (var subscriber in _subscribers)
+                {
+                    foreach (var silo in silos)
+                    {
                         subscriber.SiloStatusChangeNotification(silo, SiloStatus.Active);
                     }
                 }
@@ -88,7 +94,7 @@ namespace src
 
         public Task KillMyself()
         {
-            if(_silos.ContainsKey(_siloDetails.SiloAddress))
+            if (_silos.ContainsKey(_siloDetails.SiloAddress))
                 _silos.Remove(_siloDetails.SiloAddress);
 
             return Task.FromResult(0);
@@ -96,9 +102,9 @@ namespace src
 
         public SiloStatus GetApproximateSiloStatus(SiloAddress siloAddress)
         {
-            if(!_silos.ContainsKey(siloAddress))
-                return SiloStatus.Dead; //what if its still loading?
-
+            if (!_silos.ContainsKey(siloAddress))
+                return SiloStatus.None;
+                
             return _silos[siloAddress];
         }
 

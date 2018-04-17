@@ -46,6 +46,11 @@ $nomadbin = './bin/nomad.exe'
 $arangobin = './bin/ArangoDB3-3.3.4-1_win64/usr/bin/arangod.exe'
 $miniobin = './bin/minio.exe'
 
+mkdir .\data
+mkdir data/nomad
+mkdir data/consul
+mkdir data/nomad/config
+
 cp ./nomad.client.hcl ./data/nomad/config/nomad.client.hcl
 
 if($minioJob.State -ne 'Running'){

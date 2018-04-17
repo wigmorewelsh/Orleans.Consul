@@ -38,7 +38,10 @@ namespace test
                 hostBuilder.AddMemoryGrainStorageAsDefault();
                 hostBuilder
                     .ConfigureApplicationParts(parts =>
-                        parts.AddApplicationPart(typeof(aln.Program).Assembly).WithReferences());
+                    {
+                        parts.AddApplicationPart(typeof(aln.Program).Assembly);
+                        parts.AddApplicationPart(typeof(IName).Assembly);
+                    });
             }
         }
     }

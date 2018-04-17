@@ -8,7 +8,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "front", "src\front\front.cs
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "silo", "src\silo\silo.csproj", "{E1890789-85C5-41BC-B3D2-319632A7316C}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "src", "src\orleans.consul\src.csproj", "{FC52B9F8-8F80-4A0C-9311-75B33135B376}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Orleans.Consul", "src\orleans.consul\Orleans.Consul.csproj", "{FC52B9F8-8F80-4A0C-9311-75B33135B376}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Interfaces", "src\Interfaces\Interfaces.csproj", "{633CDDE0-12CF-44C8-8258-3434B1490EA0}"
 EndProject

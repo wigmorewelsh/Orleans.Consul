@@ -12,14 +12,14 @@ using Orleans.Runtime;
 
 namespace src
 {
-  public class ConsulGatewayOptions
-  {
-    public string ClusterAddress {get;set;}
+    public class ConsulGatewayOptions
+    {
+        public string ClusterAddress { get; set; }
 
-    public string ConsulAddress {get;set;}
-  }
+        public string ConsulAddress { get; set; }
+    }
 
-  public class ConsulGatewayListProvider : IGatewayListProvider, IGatewayListObservable, IDisposable
+    public class ConsulGatewayListProvider : IGatewayListProvider, IGatewayListObservable, IDisposable
     {
         private ConsulClient _client;
         private HashSet<IGatewayListListener> _listeners;
@@ -43,7 +43,7 @@ namespace src
         public bool SubscribeToGatewayNotificationEvents(IGatewayListListener listener)
         {
             var contains = _listeners.Contains(listener);
-            if(contains)
+            if (contains)
                 _listeners.Add(listener);
             return !contains;
         }
@@ -77,7 +77,7 @@ namespace src
 
         private async Task<List<SiloAddress>> FetchGateways()
         {
-            var options = new QueryOptions {WaitIndex = _waitIndex};
+            var options = new QueryOptions { WaitIndex = _waitIndex };
             var service = await FetchServices(options);
             _waitIndex = service.LastIndex;
             var urls = new List<SiloAddress>();

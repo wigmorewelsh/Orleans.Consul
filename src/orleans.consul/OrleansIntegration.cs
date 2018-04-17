@@ -8,20 +8,24 @@ using Orleans.Messaging;
 using Orleans.Runtime;
 using src;
 
-namespace Orleans.Consul {
-  public static class BuilderExt {
-    public static ISiloHostBuilder UseConsulServiceClustering(this ISiloHostBuilder builder, string clusterAddress, string livenessAddress, string consulAddress)
+namespace Orleans.Consul
+{
+    public static class BuilderExt
     {
+        public static ISiloHostBuilder UseConsulServiceClustering(this ISiloHostBuilder builder, string clusterAddress, string livenessAddress, string consulAddress)
+        {
             return builder.ConfigureServices(
                 services =>
                 {
-                    services.Configure<ConsulMembershipOptions>(conf => {
-                      conf.LivenessAddress = livenessAddress;
-                      conf.ClusterAddress = clusterAddress;
-                      conf.ConsulAddress = consulAddress;
+                    services.Configure<ConsulMembershipOptions>(conf =>
+                    {
+                        conf.LivenessAddress = livenessAddress;
+                        conf.ClusterAddress = clusterAddress;
+                        conf.ConsulAddress = consulAddress;
                     });
 
-                    services.Configure<ConsulGatewayOptions>(conf => {
+                    services.Configure<ConsulGatewayOptions>(conf =>
+                    {
                         conf.ClusterAddress = clusterAddress;
                         conf.ConsulAddress = consulAddress;
                     });
@@ -30,19 +34,20 @@ namespace Orleans.Consul {
                     services.TryAddSingleton<ISiloStatusOracle>(provider => provider.GetService<IMembershipOracle>());
                     services.AddSingleton<IGatewayListProvider, ConsulGatewayListProvider>();
                 });
-    }
+        }
 
-    public static IClientBuilder UseConsulServiceClustering(this IClientBuilder builder, string clusterAddress, string consulAddress)
-    {
+        public static IClientBuilder UseConsulServiceClustering(this IClientBuilder builder, string clusterAddress, string consulAddress)
+        {
             return builder.ConfigureServices(services =>
                 {
-                    services.Configure<ConsulGatewayOptions>(conf => {
-                      conf.ClusterAddress = clusterAddress;
-                      conf.ConsulAddress = consulAddress;
+                    services.Configure<ConsulGatewayOptions>(conf =>
+                    {
+                        conf.ClusterAddress = clusterAddress;
+                        conf.ConsulAddress = consulAddress;
                     });
-                    
+
                     services.AddSingleton<IGatewayListProvider, ConsulGatewayListProvider>();
                 });
+        }
     }
-  } 
 }
