@@ -6,6 +6,7 @@ using Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Configuration.Memory;
 using Orleans;
+using Orleans.Configuration;
 using Orleans.Hosting;
 using Orleans.TestingHost;
 using Xunit;
@@ -35,7 +36,11 @@ namespace test
         {
             public void Configure(ISiloHostBuilder hostBuilder)
             {
+                hostBuilder.Configure<ClusterOptions>(options => options.ClusterId = "docker")
+                    .Configure<ClusterMembershipOptions>(options => { options.ValidateInitialConnectivity = false; });
+
                 hostBuilder.AddMemoryGrainStorageAsDefault();
+                
                 hostBuilder
                     .ConfigureApplicationParts(parts =>
                     {

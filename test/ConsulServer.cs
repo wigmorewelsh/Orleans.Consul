@@ -9,9 +9,33 @@ using System.Threading.Tasks;
 using Microsoft.DotNet.PlatformAbstractions;
 using src;
 using Xunit;
+using Shouldly;
 
 namespace test
 {
+    [Collection("Consul")]
+    public class ConsulTests
+    {
+        private readonly ConsulServer _server;
+
+        public ConsulTests(ConsulServer server)
+        {
+            _server = server;
+        }
+
+        [Fact]
+        public async Task Test()
+        {
+            var cli = new ConsulGateway(new ConsulFactory());
+            await cli.SetProperty("ping", "pong");
+
+            var dat = await cli.GetProperty("ping");
+
+            dat.ShouldBe("pong");
+        }
+    }
+
+
     [CollectionDefinition("Consul")]
     public class DatabaseCollection : ICollectionFixture<ConsulServer>
     {
@@ -42,7 +66,7 @@ namespace test
 
             try
             {
-                using (var gateway = new ConsulGateway())
+                using (var gateway = new ConsulGateway(new ConsulFactory()))
                 {
                     await gateway.SetProperty("ping", "value");
                     isRunning = true;
@@ -71,7 +95,7 @@ namespace test
             {
                 try
                 {
-                    using (var gateway = new ConsulGateway())
+                    using (var gateway = new ConsulGateway(new ConsulFactory()))
                     {
                         await gateway.SetProperty("ping", "value");
                         break;
