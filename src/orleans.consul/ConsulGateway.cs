@@ -26,6 +26,7 @@ namespace src
 
     public class ConsulGateway : IDisposable
     {
+        private const string GenerationTag = "generation";
         private readonly ConsulFactory _factory;
 
         public ConsulGateway(ConsulFactory factory)
@@ -52,6 +53,38 @@ namespace src
             var consul = _factory.Create();
             var property = await consul.KV.Get("ping");
             return Encoding.UTF8.GetString(property.Response.Value);
+        }
+
+        public async Task EnsureRegistered(string serviceName, string generationTag)
+        {
+            var consul = _factory.Create();
+            await consul.Agent.ServiceRegister(new AgentServiceRegistration
+            {
+                Address = serviceName,
+                Name = serviceName,
+                Tags = new string[] {$"{GenerationTag}:{generationTag}"}
+            });
+        }
+
+        public async Task<string> LookupRegistered(string serviceName)
+        {
+            var consul = _factory.Create();
+            var records = await consul.Catalog.Service(serviceName);
+
+            var tag = "";
+            foreach (var service in records.Response)
+            {
+                foreach (var serviceTag in service.ServiceTags)
+                {
+                    var tagParts = serviceTag.Split(':');
+                    if (tagParts[0] == GenerationTag)
+                    {
+                        tag = tagParts[1];
+                    }
+                }
+            }
+
+            return tag;
         }
     }
 }

@@ -21,8 +21,9 @@ namespace test
 
             var builder = new TestClusterBuilder();
             builder.AddSiloBuilderConfigurator<SiloConfigurator>();
-            var host = builder.Build();
 
+            builder.Options.InitialSilosCount = 1;
+            var host = builder.Build();
             await host.DeployAsync();
 
             var ff = host.GrainFactory.GetGrain<IName>(0);

@@ -89,7 +89,10 @@ namespace test
             executable = Path.Combine(basePath, "consul.exe");
 
 
-            _process = Process.Start(executable, "agent -dev");
+            var processStartInfo = new ProcessStartInfo(executable, "agent -dev");
+            processStartInfo.CreateNoWindow = true;
+            processStartInfo.UseShellExecute = false;
+            _process = Process.Start(processStartInfo);
 
             for (int i = 0; i < 5; i++)
             {
