@@ -10,7 +10,7 @@ using Xunit;
 namespace test
 {
     [Collection("Consul")]
-    public class WhenANodeStartsUp
+    public class WhenANodeStartsUp : IDisposable
     {
         private ConsulServer _server;
 
@@ -32,42 +32,64 @@ namespace test
         public async Task ShouldAddAServiceRecord()
         {
             var client = new ConsulGateway(new ConsulFactory());
-            await client.EnsureRegistered("service1", "123");
+            await client.EnsureRegistered("service1", "123", 1235);
 
             var records = await client.LookupRegistered("service1");
-            records.ShouldBe("123");
+            records.Count.ShouldBe(1);
+            records[0].ShouldBe("123");
         }
 
         [Fact]
         public async Task WhenARecordAlreadyExistsShouldUpdateGenerationTag()
         {
             var client = new ConsulGateway(new ConsulFactory());
-            await client.EnsureRegistered("service1", "123");
+            await client.EnsureRegistered("service1", "123", 1235);
 
-            await client.EnsureRegistered("service1", "1234");
+            await client.EnsureRegistered("service1", "1234", 1235);
 
             var records = await client.LookupRegistered("service1");
-            records.ShouldBe("1234");
+            records.Count.ShouldBe(1);
+            records[0].ShouldBe("1234");
         }
 
         [Fact]
         public async Task ShouldAddAServiceRecordB()
         {
             var client = new ConsulGateway(new ConsulFactory());
-            await client.EnsureRegistered("service1", "1234");
+            await client.EnsureRegistered("service1", "1234", 1235);
 
             var records = await client.LookupRegistered("service1");
-            records.ShouldBe("1234");
+            records.Count.ShouldBe(1);
+            records[0].ShouldBe("1234");
         }
 
         [Fact]
         public async Task WhenLookingUpWithDifferentNameShouldBeEmpty()
         {
             var client = new ConsulGateway(new ConsulFactory());
-            await client.EnsureRegistered("service1", "1234");
+            await client.EnsureRegistered("service1", "1234", 1235);
 
             var records = await client.LookupRegistered("service2");
             records.ShouldBeEmpty();
+        }
+
+        [Fact]
+        public async Task ServicesWithDifferentPortsShouldHaveSeparateRecords()
+        {
+            var client = new ConsulGateway(new ConsulFactory());
+            await client.EnsureRegistered("service1", "123", 1111);
+
+
+            var client2 = new ConsulGateway(new ConsulFactory());
+            await client2.EnsureRegistered("service1", "1234", 2222);
+
+            var records = await client.LookupRegistered("service1");
+            records.Count.ShouldBe(2);
+        }
+
+        public void Dispose()
+        {
+            _server?.Cleanup();
         }
     }
 }

@@ -53,6 +53,19 @@ namespace test
             spinUp().Wait(TimeSpan.FromSeconds(5));
         }
 
+        public void Cleanup()
+        {
+            cleanup().Wait(TimeSpan.FromSeconds(5));
+        }
+
+        private static async Task cleanup()
+        {
+            using (var gateway = new ConsulGateway(new ConsulFactory()))
+            {
+                await gateway.Cleanup();
+            }
+        }
+
         public void Dispose()
         {
             _process?.Kill();
