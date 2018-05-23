@@ -19,25 +19,25 @@ namespace src
         public string ConsulAddress { get; set; }
     }
 
-    public class ConsulGatewayListProvider : IGatewayListProvider, IGatewayListObservable, IDisposable
+    public class ConsulGatewayListProvider : IGatewayListProvider, IGatewayListObservable, IDisposable, IListener
     {
-        private ConsulClient _client;
         private HashSet<IGatewayListListener> _listeners;
         private IOptions<ConsulGatewayOptions> _options;
-        private Task _task;
+        private readonly ConsulGateway _consul;
         private string _serviceName;
-        private ulong _waitIndex;
         private ILogger<ConsulGatewayListProvider> _logger;
         private List<SiloAddress> _urls;
 
-        public ConsulGatewayListProvider(ILogger<ConsulGatewayListProvider> logger, IOptions<ConsulGatewayOptions> options)
+        public ConsulGatewayListProvider(
+            ILogger<ConsulGatewayListProvider> logger,
+            IOptions<ConsulGatewayOptions> options,
+            ConsulGateway consul)
         {
             _logger = logger;
             _listeners = new HashSet<IGatewayListListener>();
             _options = options;
-            _client = new ConsulClient(conf => conf.Address = new Uri(_options.Value.ConsulAddress));
+            _consul = consul;
             _serviceName = options.Value.ClusterAddress;
-            _waitIndex = 0;
         }
 
         public bool SubscribeToGatewayNotificationEvents(IGatewayListListener listener)
@@ -58,63 +58,29 @@ namespace src
 
         public Task InitializeGatewayListProvider()
         {
-            _task = Task.Run(UpdateLoop);
+            _consul.Subscribe(this);
             return Task.FromResult(0);
-        }
-
-        private async Task UpdateLoop()
-        {
-            while (true)
-            {
-                var urls = await FetchGateways();
-
-                _urls = urls;
-
-                foreach (var listener in _listeners)
-                    listener.GatewayListNotification(urls.Select(a => a.ToGatewayUri()));
-            }
-        }
-
-        private async Task<List<SiloAddress>> FetchGateways()
-        {
-            var options = new QueryOptions { WaitIndex = _waitIndex };
-            var service = await FetchServices(options);
-            _waitIndex = service.LastIndex;
-            var urls = new List<SiloAddress>();
-            foreach (var inst in service.Response)
-            {
-                var ip = IPAddress.Parse(inst.ServiceAddress);
-                var ep = new IPEndPoint(ip, inst.ServicePort);
-                urls.Add(SiloAddress.New(ep, 0));
-            }
-
-            return urls;
-        }
-
-        private async Task<QueryResult<CatalogService[]>> FetchServices(QueryOptions options)
-        {
-            while (true)
-            {
-                try
-                {
-                    return await _client.Catalog.Service(_serviceName, "", options);
-                }
-                catch (Exception err)
-                {
-                    _logger.Error(99, "Waiting for new consul services timed out", err);
-                }
-            }
         }
 
         public async Task<IList<Uri>> GetGateways()
         {
-            if (_urls == null)
+            var fetchGateways = await _consul.LookupRegistered(_serviceName);
+            var addresses = new List<SiloAddress>();
+            foreach (var gateway in fetchGateways)
             {
-                var fetchGateways = await FetchGateways();
-                return fetchGateways.Select(a => a.ToGatewayUri()).ToList();
+                var address = ToSlioAddress(gateway);
+                addresses.Add(address);
             }
+            return addresses.Select(a => a.ToGatewayUri()).ToList();
+        }
 
-            return _urls.Select(a => a.ToGatewayUri()).ToList();
+        private static SiloAddress ToSlioAddress(ConsulSiloAddress gateway)
+        {
+            var ipAddress = IPAddress.Parse(gateway.Address);
+            var ipEndPoint = new IPEndPoint(ipAddress, gateway.Port);
+            var address = SiloAddress.New(ipEndPoint,
+                int.Parse(gateway.Generation));
+            return address;
         }
 
         public TimeSpan MaxStaleness => TimeSpan.Zero;
@@ -122,8 +88,14 @@ namespace src
 
         public void Dispose()
         {
-            _client?.Dispose();
-            _task?.Dispose();
+            _consul?.Dispose();
+        }
+
+        public void Update(List<ConsulSiloAddress> tags)
+        {
+            var gateways = tags.Select(a => ToSlioAddress(a).ToGatewayUri()).ToList();
+            foreach (var listener in _listeners)
+                listener.GatewayListNotification(gateways);
         }
     }
 }

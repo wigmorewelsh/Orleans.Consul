@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 using Consul;
 using Microsoft.Extensions.Options;
@@ -18,62 +17,39 @@ namespace src
         public string LivenessAddress { get; internal set; }
     }
 
-    public class ConsulMembershipOracle : IMembershipOracle, IDisposable
+    public class ConsulMembershipOracle : IMembershipOracle, IDisposable, IListener
     {
         private readonly ILocalSiloDetails _siloDetails;
         private readonly IOptions<ConsulMembershipOptions> _options;
+        private readonly ConsulGateway _consul;
         private Task _task;
-        private ConsulClient _client;
-        private ulong _waitIndex = 0;
         private string _serviceName;
         private readonly HashSet<ISiloStatusListener> _subscribers = new HashSet<ISiloStatusListener>();
         private Dictionary<SiloAddress, SiloStatus> _silos = new Dictionary<SiloAddress, SiloStatus>();
         private bool _running;
 
-        private CancellationToken _cancelToken = new CancellationToken();
-
-
-        public ConsulMembershipOracle(ILocalSiloDetails siloDetails, IOptions<ConsulMembershipOptions> options)
+        public ConsulMembershipOracle(
+            ILocalSiloDetails siloDetails, 
+            IOptions<ConsulMembershipOptions> options,
+            ConsulGateway consul)
         {
             _siloDetails = siloDetails;
             _options = options;
+            _consul = consul;
             _serviceName = options.Value.LivenessAddress;
-            _client = new ConsulClient(conf => conf.Address = new Uri(options.Value.ConsulAddress));
         }
 
-        public Task Start()
+        public async Task Start()
         {
-            _running = true;
-            _task = Task.Run(UpdateLoop);
-            return Task.FromResult(0);
-        }
+            await _consul.EnsureRegistered(_serviceName, 
+                _siloDetails.GatewayAddress.Generation.ToString(),
+                _siloDetails.GatewayAddress.Endpoint.Port);
 
-        private async Task UpdateLoop()
-        {
-            while (true)
-            {
-                if (!_running) return;
-                var service = await _client.Catalog.Service(_serviceName, "", new QueryOptions { WaitIndex = _waitIndex }, _cancelToken);
-                _waitIndex = service.LastIndex;
+            _consul.Subscribe(this);
 
-                var silos = new List<SiloAddress>();
-                foreach (var inst in service.Response)
-                {
-                    var ip = IPAddress.Parse(inst.ServiceAddress);
-                    var ep = new IPEndPoint(ip, inst.ServicePort);
-                    silos.Add(SiloAddress.New(ep, 0));
-                }
+            var tags = await _consul.LookupRegistered(_serviceName);
 
-                _silos = silos.ToDictionary(el => el, _ => SiloStatus.Active);
-
-                foreach (var subscriber in _subscribers)
-                {
-                    foreach (var silo in silos)
-                    {
-                        subscriber.SiloStatusChangeNotification(silo, SiloStatus.Active);
-                    }
-                }
-            }
+            _silos = tags.Select(a => ToSlioAddress(a)).ToDictionary(el => el, _ => SiloStatus.Active);
         }
 
         public Task BecomeActive()
@@ -164,7 +140,24 @@ namespace src
         public void Dispose()
         {
             _task?.Dispose();
-            _client?.Dispose();
+            _consul?.Dispose();
+        }
+
+        private static SiloAddress ToSlioAddress(ConsulSiloAddress gateway)
+        {
+            var ipAddress = IPAddress.Parse(gateway.Address);
+            var ipEndPoint = new IPEndPoint(ipAddress, gateway.Port);
+            var address = SiloAddress.New(ipEndPoint,
+                int.Parse(gateway.Generation));
+            return address;
+        }
+
+        public void Update(List<ConsulSiloAddress> tags)
+        {
+            var gateways = tags.Select(a => ToSlioAddress(a)).ToList();
+            foreach (var listener in _subscribers)
+                foreach (var silo in gateways)
+                    listener.SiloStatusChangeNotification(silo, SiloStatus.Active);
         }
     }
 }

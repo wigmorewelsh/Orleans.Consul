@@ -52,8 +52,8 @@ namespace test
 
     public class Listener : IListener
     {
-        public List<string> Services { get; private set; } = new List<string>();
-        public void Update(List<string> tags)
+        public List<ConsulSiloAddress> Services { get; private set; } = new List<ConsulSiloAddress>();
+        public void Update(List<ConsulSiloAddress> tags)
         {
             Services = tags;
         }

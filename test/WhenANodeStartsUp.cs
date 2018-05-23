@@ -36,7 +36,7 @@ namespace test
 
             var records = await client.LookupRegistered("service1");
             records.Count.ShouldBe(1);
-            records[0].ShouldBe("123");
+            records[0].Generation.ShouldBe("123");
         }
 
         [Fact]
@@ -49,7 +49,7 @@ namespace test
 
             var records = await client.LookupRegistered("service1");
             records.Count.ShouldBe(1);
-            records[0].ShouldBe("1234");
+            records[0].Generation.ShouldBe("1234");
         }
 
         [Fact]
@@ -60,7 +60,7 @@ namespace test
 
             var records = await client.LookupRegistered("service1");
             records.Count.ShouldBe(1);
-            records[0].ShouldBe("1234");
+            records[0].Generation.ShouldBe("1234");
         }
 
         [Fact]

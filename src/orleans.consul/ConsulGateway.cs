@@ -24,6 +24,13 @@ namespace src
         }
     }
 
+    public struct ConsulSiloAddress
+    {
+        public string Address { get; set; }
+        public string Generation { get; set; }
+        public int Port { get; set; }
+    }
+
     public class ConsulGateway : IDisposable
     {
         private const string GenerationTag = "generation";
@@ -71,32 +78,48 @@ namespace src
             });
         }
 
-        public async Task<List<string>> LookupRegistered(string serviceName)
+        public async Task<List<ConsulSiloAddress>> LookupRegistered(string serviceName)
         {
             var consul = _factory.Create();
             var records = await consul.Catalog.Service(serviceName);
+            var recordsResponse = records.Response;
 
-            var tags = ExtractTags(records);
+            var addresses = ToConsulSiloAddresses(recordsResponse);
 
-            return tags;
+            return addresses;
         }
 
-        private static List<string> ExtractTags(QueryResult<CatalogService[]> records)
+        private static List<ConsulSiloAddress> ToConsulSiloAddresses(CatalogService[] recordsResponse)
         {
-            var tags = new List<string>();
-            foreach (var service in records.Response)
+            var addresses = new List<ConsulSiloAddress>();
+            foreach (var service in recordsResponse)
             {
-                foreach (var serviceTag in service.ServiceTags)
+                var tagPart = ExtractGeneration(service);
+                var address = new ConsulSiloAddress
                 {
-                    var tagParts = serviceTag.Split(':');
-                    if (tagParts[0] == GenerationTag)
-                    {
-                        tags.Add(tagParts[1]);
-                    }
+                    Address = service.Address,
+                    Port = service.ServicePort,
+                    Generation = tagPart
+                };
+                addresses.Add(address);
+            }
+
+            return addresses;
+        }
+
+        private static string ExtractGeneration(CatalogService service)
+        {
+            string tagPart = null;
+            foreach (var serviceTag in service.ServiceTags)
+            {
+                var tagParts = serviceTag.Split(':');
+                if (tagParts[0] == GenerationTag)
+                {
+                    tagPart = tagParts[1];
                 }
             }
 
-            return tags;
+            return tagPart;
         }
 
         public async Task Cleanup()
@@ -126,8 +149,9 @@ namespace src
                 {
                     var records = await consul.Catalog.Service("service1", "", new QueryOptions {WaitIndex = _index});
                     _index = records.LastIndex;
-                    var tags = ExtractTags(records);
-                    UpdateListeners(tags);
+                    var siloAddresses = ToConsulSiloAddresses(records.Response);
+       
+                    UpdateListeners(siloAddresses);
                 }
             }
             catch (Exception e)
@@ -137,7 +161,7 @@ namespace src
             }
         }
 
-        private void UpdateListeners(List<string> tags)
+        private void UpdateListeners(List<ConsulSiloAddress> tags)
         {
             foreach (var listener in _listeners)
             {
@@ -156,6 +180,6 @@ namespace src
 
     public interface IListener
     {
-        void Update(List<string> tags);
+        void Update(List<ConsulSiloAddress> tags);
     }
 }
