@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Consul;
 
@@ -31,11 +33,18 @@ namespace src
         public int Port { get; set; }
     }
 
+    public class ConsulListeners
+    {
+        public HashSet<IListener> Listeners = new HashSet<IListener>();
+        public CancellationTokenSource Cancellation = new CancellationTokenSource();
+        public Task Task { get; set; }
+    }
+
     public class ConsulGateway : IDisposable
     {
         private const string GenerationTag = "generation";
         private readonly ConsulFactory _factory;
-        private List<IListener> _listeners = new List<IListener>();
+        private ConcurrentDictionary<string, ConsulListeners> _listenerses = new ConcurrentDictionary<string, ConsulListeners>();
         private ulong _index;
         private bool _isListening;
 
@@ -46,7 +55,10 @@ namespace src
 
         public void Dispose()
         {
-            
+            foreach (var listenerse in _listenerses)
+            {
+                listenerse.Value.Cancellation.Cancel();
+            }
         }
 
         public Task SetProperty(string ping, string value)
@@ -132,14 +144,27 @@ namespace src
             }
         }
 
-        public void Subscribe(IListener listener)
+        private object _lock = new Object();
+
+        public void Subscribe(IListener listener, string serviceName)
         {
-            _listeners.Add(listener);
-            if (_isListening) return;
-            Task.Run(Listener);
+            if (_listenerses.TryGetValue(serviceName, out var cl))
+            {
+                cl.Listeners.Add(listener);
+                return;
+            }
+
+            lock (_lock)
+            {
+                var cl2 = new ConsulListeners();
+                cl2.Listeners.Add(listener);
+                cl2.Task = Task.Factory.StartNew(() => Listener(serviceName, cl2));
+                _listenerses[serviceName] = cl2;
+            }
+
         }
 
-        private async Task Listener()
+        private async Task Listener(string serviceName, ConsulListeners cl2)
         {
             _index = 0;
             try
@@ -147,23 +172,24 @@ namespace src
                 var consul = _factory.Create();
                 while (true)
                 {
-                    var records = await consul.Catalog.Service("service1", "", new QueryOptions {WaitIndex = _index});
+                    if (cl2.Cancellation.IsCancellationRequested) return;
+                    var records = await consul.Catalog.Service(serviceName, "", new QueryOptions {WaitIndex = _index}, cl2.Cancellation.Token);
                     _index = records.LastIndex;
                     var siloAddresses = ToConsulSiloAddresses(records.Response);
-       
-                    UpdateListeners(siloAddresses);
+
+                    var listeners = _listenerses[serviceName];
+                    UpdateListeners(siloAddresses, listeners);
                 }
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
                 await Task.Delay(50);
             }
         }
 
-        private void UpdateListeners(List<ConsulSiloAddress> tags)
+        private void UpdateListeners(List<ConsulSiloAddress> tags, ConsulListeners listeners)
         {
-            foreach (var listener in _listeners)
+            foreach (var listener in listeners.Listeners)
             {
                 try
                 {
@@ -174,6 +200,20 @@ namespace src
                 {
                     Console.WriteLine(e);
                 }
+            }
+        }
+
+        public async Task EnsureDeRegistered(string serviceName, string generationTag, int port)
+        {
+            var consul = _factory.Create();
+            await consul.Agent.ServiceDeregister($"{serviceName}-{port}");
+        }
+
+        public void Unsubscribe(ConsulMembershipOracle listener, string serviceName)
+        {
+            if (_listenerses.TryGetValue(serviceName, out var cl))
+            {
+                cl.Listeners.Remove(listener);
             }
         }
     }

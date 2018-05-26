@@ -33,6 +33,9 @@ namespace Orleans.Consul
                     services.AddSingleton<IMembershipOracle, ConsulMembershipOracle>();
                     services.TryAddSingleton<ISiloStatusOracle>(provider => provider.GetService<IMembershipOracle>());
                     services.AddSingleton<IGatewayListProvider, ConsulGatewayListProvider>();
+
+                    services.AddSingleton<ConsulGateway, ConsulGateway>();
+                    services.AddSingleton<ConsulFactory, ConsulFactory>();
                 });
         }
 
@@ -47,6 +50,9 @@ namespace Orleans.Consul
                     });
 
                     services.AddSingleton<IGatewayListProvider, ConsulGatewayListProvider>();
+
+                    services.AddSingleton<ConsulGateway, ConsulGateway>();
+                    services.AddSingleton<ConsulFactory, ConsulFactory>();
                 });
         }
     }

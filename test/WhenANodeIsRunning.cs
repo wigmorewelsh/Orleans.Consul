@@ -27,7 +27,7 @@ namespace test
             await client.EnsureRegistered("service1", "1", 1235);
 
             var listener = new Listener();
-            client.Subscribe(listener);
+            client.Subscribe(listener, "service1");
 
             listener.Services.Count.ShouldBe(0);
 

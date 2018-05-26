@@ -6,6 +6,6 @@ namespace Interfaces
 {
     public interface IName : IGrainWithIntegerKey
     {
-        Task SayHello();
+        Task<string> SayHello();
     }
 }

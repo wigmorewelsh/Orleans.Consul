@@ -58,7 +58,7 @@ namespace src
 
         public Task InitializeGatewayListProvider()
         {
-            _consul.Subscribe(this);
+            _consul.Subscribe(this, _serviceName);
             return Task.FromResult(0);
         }
 

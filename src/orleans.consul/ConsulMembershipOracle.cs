@@ -25,8 +25,9 @@ namespace src
         private Task _task;
         private string _serviceName;
         private readonly HashSet<ISiloStatusListener> _subscribers = new HashSet<ISiloStatusListener>();
-        private Dictionary<SiloAddress, SiloStatus> _silos = new Dictionary<SiloAddress, SiloStatus>();
+        private volatile Dictionary<SiloAddress, SiloStatus> _silos = new Dictionary<SiloAddress, SiloStatus>();
         private bool _running;
+        private string _gatewayName;
 
         public ConsulMembershipOracle(
             ILocalSiloDetails siloDetails, 
@@ -37,43 +38,84 @@ namespace src
             _options = options;
             _consul = consul;
             _serviceName = options.Value.LivenessAddress;
+            _gatewayName = options.Value.ClusterAddress;
         }
 
         public async Task Start()
         {
-            await _consul.EnsureRegistered(_serviceName, 
-                _siloDetails.GatewayAddress.Generation.ToString(),
-                _siloDetails.GatewayAddress.Endpoint.Port);
+            _consul.Subscribe(this, _gatewayName);
 
-            _consul.Subscribe(this);
+            UpdateStatus(SiloStatus.Joining);
 
             var tags = await _consul.LookupRegistered(_serviceName);
 
             _silos = tags.Select(a => ToSlioAddress(a)).ToDictionary(el => el, _ => SiloStatus.Active);
         }
 
-        public Task BecomeActive()
+        public async Task BecomeActive()
         {
-            return Task.FromResult(0);
+            UpdateStatus(SiloStatus.Active);
+
+            await _consul.EnsureRegistered(_gatewayName,
+                _siloDetails.SiloAddress.Generation.ToString(),
+                _siloDetails.SiloAddress.Endpoint.Port);
+
+            await _consul.EnsureRegistered(_serviceName,
+                _siloDetails.SiloAddress.Generation.ToString(),
+                _siloDetails.GatewayAddress.Endpoint.Port);
+        }
+
+        private void UpdateStatus(SiloStatus status)
+        {
+            var updated = false;
+            lock (_lock)
+            {
+                if (!_silos.ContainsKey(this.SiloAddress)) return;
+                var existing = _silos[this.SiloAddress];
+                if (existing != status)
+                {
+                    updated = true;
+                    _silos[this.SiloAddress] = status;
+                }
+            }
+
+            if (updated)
+            {
+                foreach (var listener in _subscribers)
+                    listener.SiloStatusChangeNotification(this.SiloAddress, status);
+            }
         }
 
         public Task ShutDown()
         {
+            UpdateStatus(SiloStatus.ShuttingDown);
             return Task.FromResult(0);
         }
 
         public Task Stop()
         {
+            UpdateStatus(SiloStatus.Stopping);
             _running = false;
             return Task.FromResult(0);
         }
 
-        public Task KillMyself()
+        public async Task KillMyself()
         {
+            UpdateStatus(SiloStatus.Dead);
+
+            _consul.Unsubscribe(this, _gatewayName);
+
+            await _consul.EnsureDeRegistered(_gatewayName,
+                _siloDetails.SiloAddress.Generation.ToString(),
+                _siloDetails.SiloAddress.Endpoint.Port);
+
+            await _consul.EnsureDeRegistered(_serviceName,
+                _siloDetails.SiloAddress.Generation.ToString(),
+                _siloDetails.GatewayAddress.Endpoint.Port);
+
+
             if (_silos.ContainsKey(_siloDetails.SiloAddress))
                 _silos.Remove(_siloDetails.SiloAddress);
-
-            return Task.FromResult(0);
         }
 
         public SiloStatus GetApproximateSiloStatus(SiloAddress siloAddress)
@@ -112,8 +154,8 @@ namespace src
 
         public bool IsDeadSilo(SiloAddress silo)
         {
-            if (_siloDetails.SiloAddress == silo)
-                return true;
+            if (_siloDetails.GatewayAddress == silo)
+                return false;
 
             return _silos.ContainsKey(silo);
         }
@@ -152,12 +194,22 @@ namespace src
             return address;
         }
 
+        private static object _lock = new Object();
+
         public void Update(List<ConsulSiloAddress> tags)
         {
             var gateways = tags.Select(a => ToSlioAddress(a)).ToList();
-            foreach (var listener in _subscribers)
-                foreach (var silo in gateways)
+
+            foreach (var silo in gateways)
+            {
+                if(_silos.ContainsKey(silo))
+                    continue;
+
+                _silos.Add(silo, SiloStatus.Active);
+
+                foreach (var listener in _subscribers)
                     listener.SiloStatusChangeNotification(silo, SiloStatus.Active);
+            }
         }
     }
 }

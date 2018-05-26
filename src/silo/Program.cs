@@ -23,9 +23,9 @@ namespace aln
 
   public class Namer : Grain, IName
   {
-    public Task SayHello()
+    public Task<string> SayHello()
     {
-        return Task.FromResult(0);
+        return Task.FromResult("test");
     }
   }
 
