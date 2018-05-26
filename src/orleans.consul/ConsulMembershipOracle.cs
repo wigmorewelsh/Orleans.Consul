@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using System.Threading.Tasks;
 using Consul;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Orleans.Runtime;
 
@@ -21,6 +22,7 @@ namespace src
     {
         private readonly ILocalSiloDetails _siloDetails;
         private readonly IOptions<ConsulMembershipOptions> _options;
+        private readonly ILogger<ConsulMembershipOracle> _logger;
         private readonly ConsulGateway _consul;
         private Task _task;
         private string _serviceName;
@@ -32,28 +34,37 @@ namespace src
         public ConsulMembershipOracle(
             ILocalSiloDetails siloDetails, 
             IOptions<ConsulMembershipOptions> options,
+            ILogger<ConsulMembershipOracle> logger,
             ConsulGateway consul)
         {
             _siloDetails = siloDetails;
             _options = options;
+            _logger = logger;
             _consul = consul;
             _serviceName = options.Value.LivenessAddress;
             _gatewayName = options.Value.ClusterAddress;
+            _silos[this.SiloAddress] = SiloStatus.Created;
         }
 
         public async Task Start()
         {
+            _logger.Info("ConsulOracle starting on {silo}", SiloAddress);
+            
             _consul.Subscribe(this, _gatewayName);
 
+            var tags = await _consul.LookupRegistered(_gatewayName);
+
+            foreach (var address in tags)
+            {
+                _silos[ToSlioAddress(address)] = SiloStatus.Active;
+            }
+
             UpdateStatus(SiloStatus.Joining);
-
-            var tags = await _consul.LookupRegistered(_serviceName);
-
-            _silos = tags.Select(a => ToSlioAddress(a)).ToDictionary(el => el, _ => SiloStatus.Active);
         }
 
         public async Task BecomeActive()
         {
+            _logger.Info("ConsulOracle making {silo} active", SiloAddress);
             UpdateStatus(SiloStatus.Active);
 
             await _consul.EnsureRegistered(_gatewayName,
@@ -101,6 +112,7 @@ namespace src
 
         public async Task KillMyself()
         {
+            _logger.Info("ConsulOracle making {silo} dead", SiloAddress);
             UpdateStatus(SiloStatus.Dead);
 
             _consul.Unsubscribe(this, _gatewayName);
@@ -112,10 +124,6 @@ namespace src
             await _consul.EnsureDeRegistered(_serviceName,
                 _siloDetails.SiloAddress.Generation.ToString(),
                 _siloDetails.GatewayAddress.Endpoint.Port);
-
-
-            if (_silos.ContainsKey(_siloDetails.SiloAddress))
-                _silos.Remove(_siloDetails.SiloAddress);
         }
 
         public SiloStatus GetApproximateSiloStatus(SiloAddress siloAddress)
@@ -128,6 +136,16 @@ namespace src
 
         public Dictionary<SiloAddress, SiloStatus> GetApproximateSiloStatuses(bool onlyActive = false)
         {
+            if (onlyActive)
+            {
+                var active = new Dictionary<SiloAddress, SiloStatus>();
+                foreach (var silo in _silos)
+                    if (silo.Value == SiloStatus.Active)
+                        active.Add(silo.Key, silo.Value);
+
+                return active;
+            }
+
             return _silos;
         }
 
@@ -152,12 +170,11 @@ namespace src
             return _silos.ContainsKey(siloAddress);
         }
 
-        public bool IsDeadSilo(SiloAddress silo)
+        public bool IsDeadSilo(SiloAddress address)
         {
-            if (_siloDetails.GatewayAddress == silo)
-                return false;
-
-            return _silos.ContainsKey(silo);
+            if (address.Equals(this.SiloAddress)) return false;
+            var status = this.GetApproximateSiloStatus(address);
+            return status == SiloStatus.Dead;
         }
 
         public bool SubscribeToSiloStatusEvents(ISiloStatusListener observer)
@@ -170,7 +187,7 @@ namespace src
             return _subscribers.Remove(observer);
         }
 
-        public SiloStatus CurrentStatus { get; }
+        public SiloStatus CurrentStatus => this.GetApproximateSiloStatus(this.SiloAddress);
         public string SiloName => _siloDetails.Name;
         public SiloAddress SiloAddress => _siloDetails.SiloAddress;
 
@@ -202,13 +219,27 @@ namespace src
 
             foreach (var silo in gateways)
             {
-                if(_silos.ContainsKey(silo))
+                if(_silos.ContainsKey(silo) && _silos[silo] == SiloStatus.Active)
                     continue;
 
-                _silos.Add(silo, SiloStatus.Active);
+                _logger.Info("ConsulOracle new silo found {othersilo} adding to list on {silo}", silo, SiloAddress);
+
+                _silos[silo] = SiloStatus.Active;
 
                 foreach (var listener in _subscribers)
                     listener.SiloStatusChangeNotification(silo, SiloStatus.Active);
+            }
+
+            foreach (var silo in _silos.ToList())
+            {
+                if (!gateways.Contains(silo.Key) && silo.Value == SiloStatus.Active)
+                {
+                    _logger.Info("ConsulOracle silo removed {othersilo} marking as dead on {silo}", silo, SiloAddress);
+                    _silos[silo.Key] = SiloStatus.Dead;
+
+                    foreach (var listener in _subscribers)
+                        listener.SiloStatusChangeNotification(silo.Key, SiloStatus.Dead);
+                }
             }
         }
     }
